@@ -1,0 +1,11 @@
+{
+  "name": "busplot",
+  "private": true,
+  "description": "Bus arrival tracking app - backend + mobile",
+  "scripts": {
+    "backend": "cd backend && ./mvnw spring-boot:run",
+    "mobile": "cd mobile && npm start",
+    "mobile:android": "cd mobile && npm run android",
+    "mobile:ios": "cd mobile && npm run ios"
+  }
+}

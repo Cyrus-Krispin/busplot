@@ -1,6 +1,25 @@
+.env
+
 HELP.md
-target/
-.mvn/wrapper/maven-wrapper.jar
+
+# Backend (Java/Spring)
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# Mobile (React Native / Expo)
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/npm-debug.*
+mobile/*.jks
+mobile/*.p8
+mobile/*.p12
+mobile/*.key
+mobile/*.mobileprovision
+mobile/ios/Pods/
+mobile/ios/build/
+mobile/android/app/build/
+mobile/android/.gradle/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
