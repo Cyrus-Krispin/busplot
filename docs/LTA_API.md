@@ -81,7 +81,7 @@ Returns route info: all stops per service, first/last bus timings.
 **URL:** `https://datamall2.mytransport.sg/ltaodataservice/BusStops`  
 **Update Freq:** Ad hoc
 
-Returns all bus stops with coordinates.
+Returns all bus stops with coordinates. Uses OData pagination: append `?$skip=N&$top=500` to fetch pages (~5,300 total stops).
 
 ### Response
 

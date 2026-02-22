@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -54,6 +55,8 @@ public class BusStopService {
                 .collect(Collectors.toList());
     }
 
+    private static final int LTA_PAGE_SIZE = 500;
+
     private List<BusStop> fetchAndCacheStops() {
         List<BusStop> cached = cache.get();
         if (cached != null) {
@@ -64,14 +67,22 @@ public class BusStopService {
             HttpHeaders headers = new HttpHeaders();
             headers.set("AccountKey", accountKey);
             headers.setAccept(List.of(MediaType.APPLICATION_JSON));
-
             HttpEntity<Void> request = new HttpEntity<>(headers);
-            ResponseEntity<String> response = restTemplate.exchange(BUS_STOPS_URL, HttpMethod.GET, request, String.class);
 
-            LtaBusStopsResponse parsed = objectMapper.readValue(response.getBody(), LtaBusStopsResponse.class);
-            List<BusStop> stops = parsed.getValue() != null ? parsed.getValue() : Collections.emptyList();
-            cache.set(stops);
-            return stops;
+            List<BusStop> allStops = new ArrayList<>();
+            int skip = 0;
+            while (true) {
+                String url = BUS_STOPS_URL + "?$skip=" + skip + "&$top=" + LTA_PAGE_SIZE;
+                ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, request, String.class);
+                LtaBusStopsResponse parsed = objectMapper.readValue(response.getBody(), LtaBusStopsResponse.class);
+                List<BusStop> page = parsed.getValue() != null ? parsed.getValue() : Collections.emptyList();
+                if (page.isEmpty()) break;
+                allStops.addAll(page);
+                if (page.size() < LTA_PAGE_SIZE) break;
+                skip += LTA_PAGE_SIZE;
+            }
+            cache.set(allStops);
+            return allStops;
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode().value() != 401) throw new RuntimeException("Failed to fetch Bus Stops", e);
             // LTA API key invalid/missing - use mock data so app works

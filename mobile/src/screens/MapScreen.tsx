@@ -1,17 +1,21 @@
 /**
- * Main screen: full-screen map with draggable bottom sheet for nearby stops.
+ * Main screen: full-screen map with bus stop markers.
+ * Stops are loaded based on map center - pan/zoom to see different areas.
+ * Tap a marker to view arrival times.
  */
-import { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import { useRef, useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, Platform, Modal, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, Region } from 'react-native-maps';
 import { useLocation } from '../hooks/useLocation';
-import { useNearbyStops } from '../hooks/useNearbyStops';
-import { useBackendCheck } from '../hooks/useBackendCheck';
-import { DraggableSheet } from '../components/DraggableSheet';
+import { useMapStops } from '../hooks/useMapStops';
 import { BusStopCard } from '../components/BusStopCard';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { distanceKm } from '../utils/distance';
+
+/** Min center movement (km) before refetching - avoids crash when zooming (marker add/remove) */
+const MIN_PAN_KM = 0.15;
 
 const SINGAPORE_REGION = {
   latitude: 1.3521,
@@ -20,15 +24,32 @@ const SINGAPORE_REGION = {
   longitudeDelta: 0.05,
 };
 
-const SNAP_POINTS = [18, 45, 90];
+/** Convert map region deltas to search radius in km. 1° ≈ 111 km. */
+function regionToRadiusKm(region: Region): number {
+  const degToKm = 111;
+  const radius = Math.max(region.latitudeDelta, region.longitudeDelta) * degToKm * 0.6;
+  return Math.max(0.5, Math.min(10, radius));
+}
 
 export function MapScreen() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const hasCentered = useRef(false);
-  const { location, error, loading: locLoading } = useLocation();
-  const { stops, loading: stopsLoading, isDemoMode, apiError } = useNearbyStops(location);
-  const { connectionError } = useBackendCheck();
+  const { location } = useLocation();
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number; radiusKm: number }>({
+    lat: SINGAPORE_REGION.latitude,
+    lng: SINGAPORE_REGION.longitude,
+    radiusKm: regionToRadiusKm(SINGAPORE_REGION),
+  });
+  const { stops } = useMapStops(mapCenter.lat, mapCenter.lng, mapCenter.radiusKm);
+  const [selectedStop, setSelectedStop] = useState<{
+    BusStopCode: string;
+    Description: string;
+    RoadName: string;
+    Latitude: number;
+    Longitude: number;
+    distanceKm?: number;
+  } | null>(null);
 
   const region = location
     ? {
@@ -45,9 +66,34 @@ export function MapScreen() {
     }
   }, [location, region.latitude, region.longitude]);
 
-  const loading = locLoading || stopsLoading;
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCenterRef = useRef({ lat: mapCenter.lat, lng: mapCenter.lng });
 
-  const hasError = !!(error || apiError || (connectionError && stops.length === 0));
+  const handleRegionChangeComplete = useCallback((newRegion: Region) => {
+    const lat = newRegion?.latitude;
+    const lng = newRegion?.longitude;
+    if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return;
+    }
+    const movedKm = distanceKm(lastCenterRef.current.lat, lastCenterRef.current.lng, lat, lng);
+    if (movedKm < MIN_PAN_KM) {
+      return;
+    }
+    lastCenterRef.current = { lat, lng };
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      setMapCenter({
+        lat,
+        lng,
+        radiusKm: regionToRadiusKm(newRegion),
+      });
+    }, 300);
+  }, []);
+
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -59,6 +105,7 @@ export function MapScreen() {
         showsMyLocationButton
         mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
         customMapStyle={Platform.OS === 'android' ? darkMapStyle : undefined}
+        onRegionChangeComplete={handleRegionChangeComplete}
       >
         {stops.map((s) => (
           <Marker
@@ -67,73 +114,42 @@ export function MapScreen() {
             title={s.Description}
             description={s.RoadName}
             pinColor={colors.accent}
+            tracksViewChanges={false}
+            onPress={() => {
+              const dist = location
+                ? distanceKm(location.latitude, location.longitude, s.Latitude, s.Longitude)
+                : undefined;
+              setSelectedStop({ ...s, distanceKm: dist });
+            }}
           />
         ))}
       </MapView>
 
-      <DraggableSheet
-        snapPoints={SNAP_POINTS}
-        initialIndex={0}
-        style={styles.sheet}
+      <Modal
+        visible={!!selectedStop}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedStop(null)}
       >
-        <View style={styles.sheetContent}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Nearby stops</Text>
-          {!loading && stops.length > 0 && (
-            <Text style={styles.count}>{stops.length} within 3 km</Text>
-          )}
-          {isDemoMode && (
-            <View style={styles.demoBadge}>
-              <Text style={styles.demoText}>Demo</Text>
-            </View>
-          )}
-        </View>
-
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator color={colors.accent} size="large" />
-            <Text style={styles.loadingText}>Finding nearby stops…</Text>
-          </View>
-        ) : stops.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            {hasError ? (
+        <Pressable style={styles.modalOverlay} onPress={() => setSelectedStop(null)}>
+          <Pressable
+            style={[styles.modalContent, { paddingBottom: (insets.bottom || 24) + 24 }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {selectedStop && (
               <>
-                <Text style={styles.emptyTitle}>Cannot connect to backend</Text>
-                <Text style={styles.errorMessage}>{connectionError || apiError || error}</Text>
-                <Text style={styles.errorFix}>
-                  • Backend running? (cd backend && ./mvnw spring-boot:run){'\n'}
-                  • Same Wi‑Fi as computer?{'\n'}
-                  • Correct IP in mobile/src/config.ts?
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.emptyTitle}>No stops found</Text>
-                <Text style={styles.emptySubtitle}>
-                  Enable location or move closer to Singapore to see bus stops.
-                </Text>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Bus stop</Text>
+                  <Pressable onPress={() => setSelectedStop(null)} hitSlop={12}>
+                    <Text style={styles.modalClose}>✕</Text>
+                  </Pressable>
+                </View>
+                <BusStopCard stop={selectedStop} />
               </>
             )}
-          </View>
-        ) : (
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {stops.map((stop) => (
-              <BusStopCard key={stop.BusStopCode} stop={stop} />
-            ))}
-          </ScrollView>
-        )}
-        </View>
-      </DraggableSheet>
-      {hasError && (
-        <View style={[styles.errorOverlay, { paddingTop: insets.top + 16 }]} pointerEvents="box-none">
-          <Text style={styles.errorTitle}>⚠ Connection error</Text>
-          <Text style={styles.errorMessage}>{connectionError || apiError || error}</Text>
-        </View>
-      )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -154,106 +170,31 @@ const styles = StyleSheet.create({
   map: {
     ...StyleSheet.absoluteFillObject,
   },
-  sheetContent: {
+  modalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
-  sheet: {
+  modalContent: {
     backgroundColor: colors.background,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.2, shadowRadius: 12 },
-      android: { elevation: 8 },
-    }),
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingTop: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
-  sectionTitle: {
+  modalTitle: {
     ...typography.title2,
     color: colors.text,
   },
-  count: {
-    ...typography.caption,
+  modalClose: {
+    fontSize: 24,
     color: colors.textMuted,
-  },
-  demoBadge: {
-    backgroundColor: colors.surfaceElevated,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  demoText: {
-    ...typography.label,
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-  },
-  errorOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 9999,
-    elevation: 9999,
-    backgroundColor: '#b91c1c',
-    padding: 20,
-    borderBottomWidth: 4,
-    borderBottomColor: '#fff',
-  },
-  errorTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 8,
-  },
-  errorMessage: {
-    fontSize: 16,
-    color: '#fff',
-    marginBottom: 8,
-  },
-  errorFix: {
-    fontSize: 14,
-    color: '#fecaca',
-    marginTop: 12,
-    lineHeight: 22,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-    paddingVertical: 48,
-  },
-  loadingText: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 48,
-    paddingHorizontal: 32,
-  },
-  emptyTitle: {
-    ...typography.title2,
-    color: colors.text,
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+    padding: 4,
   },
 });

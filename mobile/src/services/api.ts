@@ -55,12 +55,6 @@ export type BusArrivalResponse = {
   Services: BusServiceArrival[];
 };
 
-/** Quick connectivity check - throws if backend unreachable. */
-export async function checkBackendAvailable(): Promise<void> {
-  const res = await fetchWithTimeout(`${BASE_URL}/bus/stops`);
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
-}
-
 export async function getBusStops(): Promise<BusStop[]> {
   const res = await fetchWithTimeout(`${BASE_URL}/bus/stops`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);

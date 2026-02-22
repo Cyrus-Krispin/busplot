@@ -9,7 +9,7 @@ import { typography } from '../theme/typography';
 import type { BusStop } from '../types/bus';
 import type { BusArrivalInfo } from '../types/bus';
 
-type BusStopWithDistance = BusStop & { distanceKm: number };
+type BusStopWithDistance = BusStop & { distanceKm?: number };
 
 function getArrivalColor(mins: number): string {
   if (mins < 5) return colors.arrivalSoon;
@@ -44,7 +44,9 @@ export function BusStopCard({ stop }: { stop: BusStopWithDistance }) {
         <View style={styles.stopIdBadge}>
           <Text style={styles.stopId}>{stop.BusStopCode}</Text>
         </View>
-        <Text style={styles.distance}>{stop.distanceKm.toFixed(1)} km</Text>
+        {stop.distanceKm != null ? (
+          <Text style={styles.distance}>{stop.distanceKm.toFixed(1)} km</Text>
+        ) : null}
       </View>
       <Text style={styles.description}>{stop.Description}</Text>
       <Text style={styles.road}>{stop.RoadName}</Text>
