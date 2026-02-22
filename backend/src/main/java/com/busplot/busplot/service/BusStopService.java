@@ -44,7 +44,7 @@ public class BusStopService {
         return fetchAndCacheStops();
     }
 
-    private static final int MAX_NEARBY_STOPS = 20;
+    private static final int MAX_NEARBY_STOPS = 100;
 
     public List<BusStop> getNearbyStops(double lat, double lng, double radiusKm) {
         List<BusStop> all = fetchAndCacheStops();

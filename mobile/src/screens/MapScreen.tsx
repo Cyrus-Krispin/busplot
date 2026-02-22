@@ -4,7 +4,7 @@
  * Tap a marker to view arrival times.
  */
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Platform, Modal, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Platform, Modal, Pressable, ActivityIndicator, InteractionManager } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Region } from 'react-native-maps';
 import { useLocation } from '../hooks/useLocation';
@@ -14,8 +14,14 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { distanceKm } from '../utils/distance';
 
+/** Fixed search radius in km - does not change with zoom. */
+const FIXED_RADIUS_KM = 0.8;
 /** Min center movement (km) before refetching - avoids crash when zooming (marker add/remove) */
 const MIN_PAN_KM = 0.15;
+/** Throttle onRegionChange (ms) - reduces re-renders during pan/zoom */
+const REGION_CHANGE_THROTTLE_MS = 150;
+/** Min distance (km) from user location to show center dot */
+const SHOW_CENTER_DOT_KM = 0.05;
 
 const SINGAPORE_REGION = {
   latitude: 1.3521,
@@ -24,24 +30,16 @@ const SINGAPORE_REGION = {
   longitudeDelta: 0.05,
 };
 
-/** Convert map region deltas to search radius in km. 1° ≈ 111 km. */
-function regionToRadiusKm(region: Region): number {
-  const degToKm = 111;
-  const radius = Math.max(region.latitudeDelta, region.longitudeDelta) * degToKm * 0.6;
-  return Math.max(0.5, Math.min(10, radius));
-}
-
 export function MapScreen() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const hasCentered = useRef(false);
   const { location } = useLocation();
-  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number; radiusKm: number }>({
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({
     lat: SINGAPORE_REGION.latitude,
     lng: SINGAPORE_REGION.longitude,
-    radiusKm: regionToRadiusKm(SINGAPORE_REGION),
   });
-  const { stops } = useMapStops(mapCenter.lat, mapCenter.lng, mapCenter.radiusKm);
+  const { stops, loading } = useMapStops(mapCenter.lat, mapCenter.lng, FIXED_RADIUS_KM);
   const [selectedStop, setSelectedStop] = useState<{
     BusStopCode: string;
     Description: string;
@@ -59,37 +57,112 @@ export function MapScreen() {
       }
     : SINGAPORE_REGION;
 
+  const centerOnUser = useCallback(() => {
+    if (!location || !mapRef.current || hasCentered.current) return;
+    hasCentered.current = true;
+    const reg = {
+      ...location,
+      latitudeDelta: 0.018,
+      longitudeDelta: 0.018,
+    };
+    mapRef.current.animateToRegion(reg, 500);
+    setMapCenter({ lat: location.latitude, lng: location.longitude });
+    lastCenterRef.current = { lat: location.latitude, lng: location.longitude };
+    lastShowDotRef.current = false;
+    setShowCenterDot(false);
+  }, [location?.latitude, location?.longitude]);
+
   useEffect(() => {
-    if (location && !hasCentered.current && mapRef.current) {
-      hasCentered.current = true;
-      mapRef.current.animateToRegion(region, 500);
-    }
-  }, [location, region.latitude, region.longitude]);
+    if (location) centerOnUser();
+  }, [location?.latitude, location?.longitude, centerOnUser]);
+
+  const handleMapReady = useCallback(() => {
+    if (location) centerOnUser();
+  }, [location?.latitude, location?.longitude, centerOnUser]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCenterRef = useRef({ lat: mapCenter.lat, lng: mapCenter.lng });
+  const [showCenterDot, setShowCenterDot] = useState(false);
+  const lastShowDotRef = useRef(false);
+  const lastRegionChangeTimeRef = useRef(0);
+  const userHasPannedRef = useRef(false);
+  const readyForUserPanRef = useRef(false);
 
-  const handleRegionChangeComplete = useCallback((newRegion: Region) => {
-    const lat = newRegion?.latitude;
-    const lng = newRegion?.longitude;
-    if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return;
-    }
-    const movedKm = distanceKm(lastCenterRef.current.lat, lastCenterRef.current.lng, lat, lng);
-    if (movedKm < MIN_PAN_KM) {
-      return;
-    }
-    lastCenterRef.current = { lat, lng };
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      debounceRef.current = null;
-      setMapCenter({
-        lat,
-        lng,
-        radiusKm: regionToRadiusKm(newRegion),
-      });
-    }, 300);
-  }, []);
+  useEffect(() => {
+    if (!location) return;
+    const t = setTimeout(() => {
+      readyForUserPanRef.current = true;
+    }, 800);
+    return () => clearTimeout(t);
+  }, [location?.latitude, location?.longitude]);
+
+  const handleRegionChange = useCallback(
+    (region: Region) => {
+      if (!location) return;
+      const lat = region?.latitude;
+      const lng = region?.longitude;
+      if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return;
+      }
+      if (readyForUserPanRef.current) {
+        const dist = distanceKm(lat, lng, location.latitude, location.longitude);
+        if (dist > SHOW_CENTER_DOT_KM) {
+          userHasPannedRef.current = true;
+        }
+      }
+      if (!userHasPannedRef.current) return;
+      const now = Date.now();
+      if (now - lastRegionChangeTimeRef.current < REGION_CHANGE_THROTTLE_MS) {
+        return;
+      }
+      lastRegionChangeTimeRef.current = now;
+      const dist = distanceKm(lat, lng, location.latitude, location.longitude);
+      const wouldShow = dist > SHOW_CENTER_DOT_KM;
+      if (wouldShow !== lastShowDotRef.current) {
+        lastShowDotRef.current = wouldShow;
+        setShowCenterDot(wouldShow);
+      }
+    },
+    [location?.latitude, location?.longitude]
+  );
+
+  const handleRegionChangeComplete = useCallback(
+    (newRegion: Region) => {
+      const lat = newRegion?.latitude;
+      const lng = newRegion?.longitude;
+      if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return;
+      }
+      const movedKm = distanceKm(lastCenterRef.current.lat, lastCenterRef.current.lng, lat, lng);
+      if (movedKm >= MIN_PAN_KM) {
+        userHasPannedRef.current = true;
+        if (location) {
+          const dist = distanceKm(lat, lng, location.latitude, location.longitude);
+          const wouldShow = dist > SHOW_CENTER_DOT_KM;
+          if (wouldShow !== lastShowDotRef.current) {
+            lastShowDotRef.current = wouldShow;
+            setShowCenterDot(wouldShow);
+          }
+        }
+        lastCenterRef.current = { lat, lng };
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+          debounceRef.current = null;
+          InteractionManager.runAfterInteractions(() => {
+            setMapCenter({ lat, lng });
+          });
+        }, 500);
+      } else if (location && userHasPannedRef.current) {
+        const dist = distanceKm(lat, lng, location.latitude, location.longitude);
+        const wouldShow = dist > SHOW_CENTER_DOT_KM;
+        if (wouldShow !== lastShowDotRef.current) {
+          lastShowDotRef.current = wouldShow;
+          setShowCenterDot(wouldShow);
+        }
+      }
+    },
+    [location?.latitude, location?.longitude]
+  );
 
   useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -105,6 +178,8 @@ export function MapScreen() {
         showsMyLocationButton
         mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
         customMapStyle={Platform.OS === 'android' ? darkMapStyle : undefined}
+        onMapReady={handleMapReady}
+        onRegionChange={handleRegionChange}
         onRegionChangeComplete={handleRegionChangeComplete}
       >
         {stops.map((s) => (
@@ -124,6 +199,15 @@ export function MapScreen() {
           />
         ))}
       </MapView>
+
+      {showCenterDot && <View style={styles.centerDot} pointerEvents="none" />}
+
+      {loading && (
+        <View style={[styles.loadingOverlay, { top: (insets.top || 0) + 16 }]} pointerEvents="none">
+          <ActivityIndicator color={colors.accent} size="small" />
+          <Text style={styles.loadingText}>Loading stops…</Text>
+        </View>
+      )}
 
       <Modal
         visible={!!selectedStop}
@@ -169,6 +253,35 @@ const styles = StyleSheet.create({
   },
   map: {
     ...StyleSheet.absoluteFillObject,
+  },
+  centerDot: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: 12,
+    height: 12,
+    marginLeft: -6,
+    marginTop: -6,
+    borderRadius: 6,
+    backgroundColor: colors.accent,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  loadingText: {
+    ...typography.caption,
+    color: colors.text,
   },
   modalOverlay: {
     flex: 1,
