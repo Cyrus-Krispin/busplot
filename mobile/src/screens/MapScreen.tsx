@@ -1,14 +1,28 @@
 /**
- * Main screen: full-screen map with bus stop markers.
+ * Main screen: map in Apple-style rounded card.
+ * Collapsed: square map at top, centered on user. Tap to expand full screen.
  * Stops are loaded based on map center - pan/zoom to see different areas.
  * Tap a marker to view arrival times.
  */
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Platform, Modal, Pressable, ActivityIndicator, InteractionManager } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Platform,
+  Modal,
+  Pressable,
+  ActivityIndicator,
+  InteractionManager,
+  LayoutAnimation,
+  useWindowDimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Region } from 'react-native-maps';
 import { useLocation } from '../hooks/useLocation';
 import { useMapStops } from '../hooks/useMapStops';
+import { useUserLocationHeadingOverlay } from '../hooks/useUserLocationHeadingOverlay';
 import { BusStopCard } from '../components/BusStopCard';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -23,6 +37,10 @@ const REGION_CHANGE_THROTTLE_MS = 150;
 /** Min distance (km) from user location to show center dot */
 const SHOW_CENTER_DOT_KM = 0.05;
 
+/** Card styling - Apple/App Store style */
+const CARD_RADIUS = 12;
+const CARD_PADDING = 16;
+
 const SINGAPORE_REGION = {
   latitude: 1.3521,
   longitude: 103.8198,
@@ -32,9 +50,9 @@ const SINGAPORE_REGION = {
 
 export function MapScreen() {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const mapRef = useRef<MapView>(null);
-  const hasCentered = useRef(false);
-  const { location } = useLocation();
+  const { location, heading } = useLocation();
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({
     lat: SINGAPORE_REGION.latitude,
     lng: SINGAPORE_REGION.longitude,
@@ -48,6 +66,19 @@ export function MapScreen() {
     Longitude: number;
     distanceKm?: number;
   } | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [visibleRegion, setVisibleRegion] = useState<Region | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const hasCentered = useRef(false);
+
+  const { overlay: headingOverlay, updatePosition: headingOverlayUpdatePosition } =
+    useUserLocationHeadingOverlay({
+      mapRef,
+      location,
+      heading,
+      visibleRegion,
+      mapReady,
+    });
 
   const region = location
     ? {
@@ -77,8 +108,18 @@ export function MapScreen() {
   }, [location?.latitude, location?.longitude, centerOnUser]);
 
   const handleMapReady = useCallback(() => {
-    if (location) centerOnUser();
-  }, [location?.latitude, location?.longitude, centerOnUser]);
+    setMapReady(true);
+    if (location) {
+      const initialRegion = {
+        ...location,
+        latitudeDelta: 0.018,
+        longitudeDelta: 0.018,
+      };
+      setVisibleRegion(initialRegion);
+      centerOnUser();
+      requestAnimationFrame(() => headingOverlayUpdatePosition(initialRegion));
+    }
+  }, [location?.latitude, location?.longitude, centerOnUser, headingOverlayUpdatePosition]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCenterRef = useRef({ lat: mapCenter.lat, lng: mapCenter.lng });
@@ -98,6 +139,7 @@ export function MapScreen() {
 
   const handleRegionChange = useCallback(
     (region: Region) => {
+      setVisibleRegion(region);
       if (!location) return;
       const lat = region?.latitude;
       const lng = region?.longitude;
@@ -128,6 +170,7 @@ export function MapScreen() {
 
   const handleRegionChangeComplete = useCallback(
     (newRegion: Region) => {
+      setVisibleRegion(newRegion);
       const lat = newRegion?.latitude;
       const lng = newRegion?.longitude;
       if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -160,54 +203,96 @@ export function MapScreen() {
           setShowCenterDot(wouldShow);
         }
       }
+      headingOverlayUpdatePosition();
     },
-    [location?.latitude, location?.longitude]
+    [location?.latitude, location?.longitude, headingOverlayUpdatePosition]
   );
 
   useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
   }, []);
 
+  const toggleExpand = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsExpanded((prev) => !prev);
+  }, []);
+
+  const topInset = insets.top || 0;
+  const collapsedCardWidth = screenWidth - CARD_PADDING * 2;
+  const collapsedMapSize = Math.min(collapsedCardWidth, Math.floor(screenHeight * 0.45));
+
+  const cardStyle = isExpanded
+    ? [styles.mapCard, styles.mapCardExpanded, { paddingTop: topInset, borderRadius: 0 }]
+    : [
+        styles.mapCard,
+        styles.mapCardCollapsed,
+        {
+          marginTop: topInset + 12,
+          marginHorizontal: CARD_PADDING,
+          width: collapsedCardWidth,
+          height: collapsedMapSize,
+        },
+      ];
+
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        initialRegion={region}
-        showsUserLocation
-        showsMyLocationButton
-        mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
-        customMapStyle={Platform.OS === 'android' ? darkMapStyle : undefined}
-        onMapReady={handleMapReady}
-        onRegionChange={handleRegionChange}
-        onRegionChangeComplete={handleRegionChangeComplete}
-      >
-        {stops.map((s) => (
-          <Marker
-            key={s.BusStopCode}
-            coordinate={{ latitude: s.Latitude, longitude: s.Longitude }}
-            title={s.Description}
-            description={s.RoadName}
-            pinColor={colors.accent}
-            tracksViewChanges={false}
-            onPress={() => {
-              const dist = location
-                ? distanceKm(location.latitude, location.longitude, s.Latitude, s.Longitude)
-                : undefined;
-              setSelectedStop({ ...s, distanceKm: dist });
-            }}
-          />
-        ))}
-      </MapView>
-
-      {showCenterDot && <View style={styles.centerDot} pointerEvents="none" />}
-
-      {loading && (
-        <View style={[styles.loadingOverlay, { top: (insets.top || 0) + 16 }]} pointerEvents="none">
-          <ActivityIndicator color={colors.accent} size="small" />
-          <Text style={styles.loadingText}>Loading stops…</Text>
+      <View style={cardStyle}>
+        <View
+          style={[
+            styles.mapWrapper,
+            !isExpanded && {
+              width: collapsedMapSize,
+              height: collapsedMapSize,
+              alignSelf: 'center',
+            },
+          ]}
+        >
+          <MapView
+            ref={mapRef}
+            style={StyleSheet.absoluteFillObject}
+            initialRegion={region}
+            showsUserLocation
+            showsMyLocationButton
+            mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+            customMapStyle={Platform.OS === 'android' ? darkMapStyle : undefined}
+            onMapReady={handleMapReady}
+            onRegionChange={handleRegionChange}
+            onRegionChangeComplete={handleRegionChangeComplete}
+            onPress={!isExpanded ? toggleExpand : undefined}
+          >
+            {stops.map((s) => (
+              <Marker
+                key={s.BusStopCode}
+                coordinate={{ latitude: s.Latitude, longitude: s.Longitude }}
+                title={s.Description}
+                description={s.RoadName}
+                tracksViewChanges={false}
+                onPress={() => {
+                  const dist = location
+                    ? distanceKm(location.latitude, location.longitude, s.Latitude, s.Longitude)
+                    : undefined;
+                  setSelectedStop({ ...s, distanceKm: dist });
+                }}
+              >
+                <View style={styles.markerPin} />
+              </Marker>
+            ))}
+          </MapView>
+          {headingOverlay}
+          {showCenterDot && <View style={styles.centerDot} pointerEvents="none" />}
+          {loading && (
+            <View style={styles.loadingOverlay} pointerEvents="none">
+              <ActivityIndicator color={colors.accent} size="small" />
+              <Text style={styles.loadingText}>Loading stops…</Text>
+            </View>
+          )}
         </View>
-      )}
+        {isExpanded && (
+          <Pressable style={[styles.closeButton, { top: topInset + 12 }]} onPress={toggleExpand} hitSlop={12}>
+            <Ionicons name="chevron-down" size={28} color={colors.text} />
+          </Pressable>
+        )}
+      </View>
 
       <Modal
         visible={!!selectedStop}
@@ -251,8 +336,46 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.primary,
   },
-  map: {
-    ...StyleSheet.absoluteFillObject,
+  mapCard: {
+    backgroundColor: colors.surface,
+    borderRadius: CARD_RADIUS,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 12,
+      },
+      android: { elevation: 8 },
+    }),
+  },
+  mapCardCollapsed: {},
+  mapCardExpanded: {
+    flex: 1,
+  },
+  mapWrapper: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  closeButton: {
+    position: 'absolute',
+    right: CARD_PADDING,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markerPin: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.accent,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   centerDot: {
     position: 'absolute',
@@ -269,7 +392,7 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     position: 'absolute',
-    top: 60,
+    top: 16,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
