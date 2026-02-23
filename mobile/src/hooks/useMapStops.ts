@@ -3,8 +3,10 @@
  * Refetches when center or radius changes (e.g. user pans/zooms the map).
  */
 import { useState, useEffect } from 'react';
+import { InteractionManager } from 'react-native';
 import { getNearbyBusStops } from '../services/busService';
 import { distanceKm } from '../utils/distance';
+import { MAX_MAP_MARKERS } from '../constants/map';
 import type { BusStop } from '../types/bus';
 
 export function useMapStops(
@@ -31,11 +33,15 @@ export function useMapStops(
     getNearbyBusStops(centerLat, centerLng, radiusKm)
       .then((nearby) => {
         if (cancelled) return;
-        const withDist = nearby.map((s) => ({
-          ...s,
-          distanceKm: distanceKm(centerLat, centerLng, s.Latitude, s.Longitude),
-        }));
-        setStops(withDist);
+        const withDist = nearby
+          .map((s) => ({
+            ...s,
+            distanceKm: distanceKm(centerLat, centerLng, s.Latitude, s.Longitude),
+          }))
+          .slice(0, MAX_MAP_MARKERS);
+        InteractionManager.runAfterInteractions(() => {
+          if (!cancelled) setStops(withDist);
+        });
       })
       .catch((err) => {
         if (cancelled) return;

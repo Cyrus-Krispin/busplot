@@ -43,6 +43,7 @@ export function useMapRegion({ location, onMapCenterChange }: UseMapRegionParams
 
   const handleRegionChange = useCallback(
     (region: Region) => {
+      const now = Date.now();
       setVisibleRegion(region);
       if (!location) return;
 
@@ -59,7 +60,6 @@ export function useMapRegion({ location, onMapCenterChange }: UseMapRegionParams
 
       if (!userHasPannedRef.current) return;
 
-      const now = Date.now();
       if (now - lastRegionChangeTimeRef.current < REGION_CHANGE_THROTTLE_MS) return;
       lastRegionChangeTimeRef.current = now;
 

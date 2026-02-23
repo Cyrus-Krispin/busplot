@@ -11,6 +11,7 @@ import { useMapRegion } from '../hooks/useMapRegion';
 import { MapCard } from '../components/MapCard';
 import { BusStopMap, type BusStopMapRef } from '../components/BusStopMap';
 import { MapCloseButton } from '../components/MapCloseButton';
+import { MapRecenterButton } from '../components/MapRecenterButton';
 import { BusStopModal } from '../components/BusStopModal';
 import {
   FIXED_RADIUS_KM,
@@ -65,6 +66,15 @@ export function MapScreen() {
     resetCenterDot();
   }, [location?.latitude, location?.longitude, setLastCenter, resetCenterDot]);
 
+  const handleRecenter = useCallback(() => {
+    if (!location || !mapRef.current) return;
+    const reg = { ...location, ...DEFAULT_REGION_DELTA };
+    mapRef.current.animateToRegion(reg);
+    setMapCenter({ lat: location.latitude, lng: location.longitude });
+    setLastCenter(location.latitude, location.longitude);
+    resetCenterDot();
+  }, [location?.latitude, location?.longitude, setLastCenter, resetCenterDot]);
+
   useEffect(() => {
     if (location) centerOnUser();
   }, [location?.latitude, location?.longitude, centerOnUser]);
@@ -96,6 +106,7 @@ export function MapScreen() {
         closeButton={
           <MapCloseButton topInset={topInset} onPress={toggleExpand} />
         }
+        recenterButton={<MapRecenterButton onPress={handleRecenter} />}
       >
         <BusStopMap
           ref={mapRef}

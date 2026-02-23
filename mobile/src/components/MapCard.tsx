@@ -9,6 +9,7 @@ type MapCardProps = {
   collapsedCardWidth: number;
   children: React.ReactNode;
   closeButton?: React.ReactNode;
+  recenterButton?: React.ReactNode;
 };
 
 export function MapCard({
@@ -18,6 +19,7 @@ export function MapCard({
   collapsedCardWidth,
   children,
   closeButton,
+  recenterButton,
 }: MapCardProps) {
   const cardStyle = isExpanded
     ? [styles.card, styles.expanded, { paddingTop: topInset, borderRadius: 0 }]
@@ -40,6 +42,7 @@ export function MapCard({
     <View style={cardStyle}>
       <View style={mapWrapperStyle}>{children}</View>
       {isExpanded && closeButton}
+      {recenterButton}
     </View>
   );
 }

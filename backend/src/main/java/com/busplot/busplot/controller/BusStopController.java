@@ -4,6 +4,8 @@ import com.busplot.busplot.dto.BusStop;
 import com.busplot.busplot.service.BusArrivalService;
 import com.busplot.busplot.service.BusStopService;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +18,8 @@ import java.util.List;
 @RestController
 public class BusStopController {
 
+    private static final Logger log = LoggerFactory.getLogger(BusStopController.class);
+
     @Autowired
     private BusStopService busStopService;
 
@@ -24,7 +28,16 @@ public class BusStopController {
 
     @GetMapping(path = "/bus/stops")
     public ResponseEntity<List<BusStop>> getAllBusStops() {
-        return new ResponseEntity<>(busStopService.getAllBusStops(), HttpStatus.OK);
+        log.info("API GET /bus/stops");
+        long start = System.currentTimeMillis();
+        try {
+            List<BusStop> stops = busStopService.getAllBusStops();
+            log.info("API GET /bus/stops OK count={} ms={}", stops.size(), System.currentTimeMillis() - start);
+            return new ResponseEntity<>(stops, HttpStatus.OK);
+        } catch (Exception e) {
+            log.error("API GET /bus/stops FAILED ms={}", System.currentTimeMillis() - start, e);
+            throw e;
+        }
     }
 
     @GetMapping(path = "/bus/stops/nearby")
@@ -33,7 +46,16 @@ public class BusStopController {
             @RequestParam("lng") double lng,
             @RequestParam(value = "radiusKm", defaultValue = "3") double radiusKm
     ) {
-        return new ResponseEntity<>(busStopService.getNearbyStops(lat, lng, radiusKm), HttpStatus.OK);
+        log.info("API GET /bus/stops/nearby lat={} lng={} radiusKm={}", lat, lng, radiusKm);
+        long start = System.currentTimeMillis();
+        try {
+            List<BusStop> stops = busStopService.getNearbyStops(lat, lng, radiusKm);
+            log.info("API GET /bus/stops/nearby OK count={} ms={}", stops.size(), System.currentTimeMillis() - start);
+            return new ResponseEntity<>(stops, HttpStatus.OK);
+        } catch (Exception e) {
+            log.error("API GET /bus/stops/nearby FAILED lat={} lng={} ms={}", lat, lng, System.currentTimeMillis() - start, e);
+            throw e;
+        }
     }
 
     @GetMapping(path = "/bus/arrivals")
@@ -41,6 +63,15 @@ public class BusStopController {
             @RequestParam("busStopCode") String busStopCode,
             @RequestParam(value = "serviceNo", required = false) String serviceNo
     ) {
-        return new ResponseEntity<>(busArrivalService.getArrivals(busStopCode, serviceNo), HttpStatus.OK);
+        log.info("API GET /bus/arrivals busStopCode={} serviceNo={}", busStopCode, serviceNo);
+        long start = System.currentTimeMillis();
+        try {
+            JsonNode result = busArrivalService.getArrivals(busStopCode, serviceNo);
+            log.info("API GET /bus/arrivals OK busStopCode={} ms={}", busStopCode, System.currentTimeMillis() - start);
+            return new ResponseEntity<>(result, HttpStatus.OK);
+        } catch (Exception e) {
+            log.error("API GET /bus/arrivals FAILED busStopCode={} ms={}", busStopCode, System.currentTimeMillis() - start, e);
+            throw e;
+        }
     }
 }

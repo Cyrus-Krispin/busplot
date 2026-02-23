@@ -1,6 +1,9 @@
 import { Platform } from 'react-native';
 
 export const FIXED_RADIUS_KM = 0.8;
+
+/** Cap markers to avoid react-native-maps native crash when updating many during pan */
+export const MAX_MAP_MARKERS = 20;
 export const CARD_RADIUS = 12;
 export const CARD_PADDING = 16;
 
