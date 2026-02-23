@@ -1,0 +1,72 @@
+---
+description: Split code into focused components; avoid monolithic files
+alwaysApply: true
+---
+
+# Component Architecture
+
+Do not write everything in one file. Split code into focused components and modules.
+
+## Principles
+
+1. **Screens are thin** – Screens orchestrate state and composition. They compose components and hooks, not raw UI.
+2. **One responsibility per file** – Each component, hook, or module does one thing.
+3. **Extract constants** – Magic numbers, config, and shared values go in `constants/` or a dedicated module.
+4. **Extract reusable UI** – Buttons, overlays, modals, cards become their own components.
+5. **Extract domain pieces** – Domain-specific UI (e.g. `BusStopMarker`, `BusStopModal`) lives in components.
+
+## Structure
+
+```
+screens/          → Thin orchestration only
+components/       → Reusable UI pieces
+hooks/            → Reusable logic
+constants/        → Config, magic numbers, shared values
+utils/            → Pure helpers
+```
+
+## Example: Screen vs Components
+
+**❌ BAD** – 300+ line screen with inline styles, modal, map config, and markers:
+
+```tsx
+// MapScreen.tsx - everything in one file
+export function MapScreen() {
+  // 50 lines of state...
+  return (
+    <View>
+      <MapView>
+        {stops.map(s => <Marker ... />)}
+      </MapView>
+      <Modal>...</Modal>
+    </View>
+  );
+}
+const styles = StyleSheet.create({ /* 80 lines */ });
+```
+
+**✅ GOOD** – Screen composes components; each file has one job:
+
+```tsx
+// MapScreen.tsx – orchestration only
+export function MapScreen() {
+  const { location } = useLocation();
+  const { stops, loading } = useMapStops(...);
+  return (
+    <View>
+      <MapCard ...>
+        <BusStopMap stops={stops} loading={loading} ... />
+      </MapCard>
+      <BusStopModal stop={selectedStop} onClose={...} />
+    </View>
+  );
+}
+
+// MapCard.tsx, BusStopMap.tsx, BusStopModal.tsx, etc. – each in its own file
+```
+
+## When to Extract
+
+- **Constants**: Extract when a value is used in 2+ places or is config-like.
+- **Component**: Extract when a block of JSX is >20 lines or has its own logic.
+- **Hook**: Extract when logic is reusable or makes a component hard to read.
