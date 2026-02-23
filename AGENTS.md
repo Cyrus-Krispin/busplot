@@ -2,6 +2,10 @@
 
 Project conventions for AI-assisted development.
 
+## Commits
+
+**Keep commit messages short.** One line max.
+
 ## Architecture
 
 **Split code into focused components.** Do not write everything in one file.

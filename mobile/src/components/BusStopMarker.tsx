@@ -36,11 +36,9 @@ export function BusStopMarker({ stop, userLocation, onPress }: BusStopMarkerProp
 
 const styles = StyleSheet.create({
   pin: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 10,
+    height: 10,
     backgroundColor: colors.accent,
-    borderWidth: 2,
-    borderColor: '#fff',
+    transform: [{ rotate: '45deg' }],
   },
 });

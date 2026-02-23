@@ -20,6 +20,7 @@ export function useArrivals(busStopCode: string | null): {
     setLoading(true);
     getArrivalsForStop(busStopCode)
       .then(setArrivals)
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [busStopCode]);
 

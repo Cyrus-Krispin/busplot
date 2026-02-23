@@ -44,7 +44,8 @@ export function useMapRegion({ location, onMapCenterChange }: UseMapRegionParams
   const handleRegionChange = useCallback(
     (region: Region) => {
       const now = Date.now();
-      setVisibleRegion(region);
+      // Don't call setVisibleRegion here - causes re-renders every frame during pan,
+      // which can trigger react-native-maps native crash. Only update on region change complete.
       if (!location) return;
 
       const lat = region?.latitude;
