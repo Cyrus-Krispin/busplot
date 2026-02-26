@@ -11,8 +11,9 @@ import type { BusStop, BusServiceArrival } from '../types/bus';
 
 type BusStopWithDistance = BusStop & { distanceKm?: number };
 
-function getArrivalColor(mins: number | null): string {
-  if (mins === null) return colors.textMuted;
+type ArrivalEntry = { key: string; serviceNo: string; mins: number };
+
+function getArrivalColor(mins: number): string {
   if (mins < 5) return colors.arrivalSoon;
   if (mins < 15) return colors.arrivalMedium;
   return colors.arrivalLater;
@@ -23,17 +24,26 @@ function formatDistance(km: number): string {
   return `${km.toFixed(1)}km`;
 }
 
-function sortByEarliestArrival(services: BusServiceArrival[]): BusServiceArrival[] {
-  return [...services].sort((a, b) => {
-    const mA = minsUntil(a.NextBus.EstimatedArrival) ?? Infinity;
-    const mB = minsUntil(b.NextBus.EstimatedArrival) ?? Infinity;
-    return mA - mB;
-  });
+function flattenAndSort(services: BusServiceArrival[]): ArrivalEntry[] {
+  const entries: ArrivalEntry[] = [];
+  for (const svc of services) {
+    for (const [slot, bus] of [
+      ['1', svc.NextBus],
+      ['2', svc.NextBus2],
+      ['3', svc.NextBus3],
+    ] as const) {
+      const mins = minsUntil(bus.EstimatedArrival);
+      if (mins !== null) {
+        entries.push({ key: `${svc.ServiceNo}-${slot}`, serviceNo: svc.ServiceNo, mins });
+      }
+    }
+  }
+  return entries.sort((a, b) => a.mins - b.mins);
 }
 
 export function BusStopListCard({ stop }: { stop: BusStopWithDistance }) {
   const { arrivals, loading } = useArrivals(stop.BusStopCode);
-  const sorted = sortByEarliestArrival(arrivals);
+  const entries = flattenAndSort(arrivals);
 
   return (
     <View style={styles.card}>
@@ -56,18 +66,14 @@ export function BusStopListCard({ stop }: { stop: BusStopWithDistance }) {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.services}
         >
-          {sorted.map((svc) => {
-            const mins = minsUntil(svc.NextBus.EstimatedArrival);
-            const timeColor = getArrivalColor(mins);
-            return (
-              <View key={svc.ServiceNo} style={styles.chip}>
-                <Text style={styles.busNo}>{svc.ServiceNo}</Text>
-                <Text style={[styles.arrivalTime, { color: timeColor }]}>
-                  {formatArrival(mins)}
-                </Text>
-              </View>
-            );
-          })}
+          {entries.map((entry) => (
+            <View key={entry.key} style={styles.chip}>
+              <Text style={styles.busNo}>{entry.serviceNo}</Text>
+              <Text style={[styles.arrivalTime, { color: getArrivalColor(entry.mins) }]}>
+                {formatArrival(entry.mins)}
+              </Text>
+            </View>
+          ))}
         </ScrollView>
       )}
     </View>
