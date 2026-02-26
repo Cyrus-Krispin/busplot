@@ -10,7 +10,7 @@ import { useMapStops } from '../hooks/useMapStops';
 import { useMapRegion } from '../hooks/useMapRegion';
 import { MapCard } from '../components/MapCard';
 import { BusStopMap, type BusStopMapRef } from '../components/BusStopMap';
-import { MapCloseButton } from '../components/MapCloseButton';
+import { MapExpandButton } from '../components/MapExpandButton';
 import { MapRecenterButton } from '../components/MapRecenterButton';
 import { BusStopModal } from '../components/BusStopModal';
 import {
@@ -98,6 +98,7 @@ export function MapScreen() {
   }, []);
 
   const topInset = insets.top || 0;
+  const bottomInset = insets.bottom || 0;
   const collapsedCardWidth = screenWidth - CARD_PADDING * 2;
   const collapsedMapSize = Math.min(collapsedCardWidth, Math.floor(screenHeight * 0.45));
 
@@ -106,10 +107,11 @@ export function MapScreen() {
       <MapCard
         isExpanded={isExpanded}
         topInset={topInset}
+        bottomInset={bottomInset}
         collapsedMapSize={collapsedMapSize}
         collapsedCardWidth={collapsedCardWidth}
-        closeButton={
-          <MapCloseButton topInset={topInset} onPress={toggleExpand} />
+        expandButton={
+          <MapExpandButton isExpanded={isExpanded} onPress={toggleExpand} />
         }
         recenterButton={<MapRecenterButton onPress={handleRecenter} />}
       >

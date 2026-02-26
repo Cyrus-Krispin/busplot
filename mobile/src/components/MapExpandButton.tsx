@@ -3,19 +3,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { CARD_PADDING } from '../constants/map';
 
-type MapCloseButtonProps = {
-  topInset: number;
+type MapExpandButtonProps = {
+  isExpanded: boolean;
   onPress: () => void;
 };
 
-export function MapCloseButton({ topInset, onPress }: MapCloseButtonProps) {
+export function MapExpandButton({ isExpanded, onPress }: MapExpandButtonProps) {
   return (
-    <Pressable
-      style={[styles.button, { top: topInset + 12 }]}
-      onPress={onPress}
-      hitSlop={12}
-    >
-      <Ionicons name="chevron-down" size={28} color={colors.text} />
+    <Pressable style={styles.button} onPress={onPress} hitSlop={12}>
+      <Ionicons
+        name={isExpanded ? 'contract' : 'expand'}
+        size={22}
+        color={colors.text}
+      />
     </Pressable>
   );
 }
@@ -23,6 +23,7 @@ export function MapCloseButton({ topInset, onPress }: MapCloseButtonProps) {
 const styles = StyleSheet.create({
   button: {
     position: 'absolute',
+    bottom: CARD_PADDING,
     right: CARD_PADDING,
     width: 44,
     height: 44,

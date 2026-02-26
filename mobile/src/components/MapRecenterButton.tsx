@@ -23,7 +23,7 @@ const styles = StyleSheet.create({
   button: {
     position: 'absolute',
     bottom: CARD_PADDING,
-    right: CARD_PADDING,
+    left: CARD_PADDING,
     width: 38,
     height: 38,
     borderRadius: 19,

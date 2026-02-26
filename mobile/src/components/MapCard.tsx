@@ -5,24 +5,34 @@ import { colors } from '../theme/colors';
 type MapCardProps = {
   isExpanded: boolean;
   topInset: number;
+  bottomInset: number;
   collapsedMapSize: number;
   collapsedCardWidth: number;
   children: React.ReactNode;
-  closeButton?: React.ReactNode;
+  expandButton?: React.ReactNode;
   recenterButton?: React.ReactNode;
 };
 
 export function MapCard({
   isExpanded,
   topInset,
+  bottomInset,
   collapsedMapSize,
   collapsedCardWidth,
   children,
-  closeButton,
+  expandButton,
   recenterButton,
 }: MapCardProps) {
   const cardStyle = isExpanded
-    ? [styles.card, styles.expanded, { paddingTop: topInset, borderRadius: 0 }]
+    ? [
+        styles.card,
+        styles.expanded,
+        {
+          marginTop: topInset + CARD_PADDING,
+          marginHorizontal: CARD_PADDING,
+          marginBottom: bottomInset + CARD_PADDING,
+        },
+      ]
     : [
         styles.card,
         styles.collapsed,
@@ -41,7 +51,7 @@ export function MapCard({
   return (
     <View style={cardStyle}>
       <View style={mapWrapperStyle}>{children}</View>
-      {isExpanded && closeButton}
+      {expandButton}
       {recenterButton}
     </View>
   );
