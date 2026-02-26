@@ -28,7 +28,6 @@ type BusStopMapProps = {
   onRegionChange: (region: Region) => void;
   onRegionChangeComplete: (region: Region) => void;
   onExpandPress?: () => void;
-  onStopSelect: (stop: BusStopWithDistance) => void;
 };
 
 export const BusStopMap = forwardRef<BusStopMapRef, BusStopMapProps>(
@@ -44,7 +43,6 @@ export const BusStopMap = forwardRef<BusStopMapRef, BusStopMapProps>(
       onRegionChange,
       onRegionChangeComplete,
       onExpandPress,
-      onStopSelect,
     },
     ref
   ) => {
@@ -77,7 +75,6 @@ export const BusStopMap = forwardRef<BusStopMapRef, BusStopMapProps>(
               key={s.BusStopCode}
               stop={s}
               userLocation={userLocation}
-              onPress={onStopSelect}
             />
           ))}
         </MapView>

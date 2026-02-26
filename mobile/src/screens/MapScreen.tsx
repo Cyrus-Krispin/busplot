@@ -12,7 +12,7 @@ import { MapCard } from '../components/MapCard';
 import { BusStopMap, type BusStopMapRef } from '../components/BusStopMap';
 import { MapExpandButton } from '../components/MapExpandButton';
 import { MapRecenterButton } from '../components/MapRecenterButton';
-import { BusStopModal } from '../components/BusStopModal';
+import { BusStopList } from '../components/BusStopList';
 import {
   FIXED_RADIUS_KM,
   CARD_PADDING,
@@ -20,9 +20,6 @@ import {
   DEFAULT_REGION_DELTA,
 } from '../constants/map';
 import { colors } from '../theme/colors';
-import type { BusStop } from '../types/bus';
-
-type BusStopWithDistance = BusStop & { distanceKm?: number };
 
 export function MapScreen() {
   const insets = useSafeAreaInsets();
@@ -36,7 +33,6 @@ export function MapScreen() {
     lng: SINGAPORE_REGION.longitude,
   });
   const [isExpanded, setIsExpanded] = useState(false);
-  const [selectedStop, setSelectedStop] = useState<BusStopWithDistance | null>(null);
 
   const { stops, loading } = useMapStops(mapCenter.lat, mapCenter.lng, FIXED_RADIUS_KM);
 
@@ -127,11 +123,10 @@ export function MapScreen() {
           onRegionChange={handleRegionChange}
           onRegionChangeComplete={handleRegionChangeComplete}
           onExpandPress={toggleExpand}
-          onStopSelect={setSelectedStop}
         />
       </MapCard>
 
-      <BusStopModal stop={selectedStop} onClose={() => setSelectedStop(null)} />
+      {!isExpanded && <BusStopList stops={stops} />}
     </View>
   );
 }
