@@ -1,22 +1,33 @@
 /**
- * Two-tier card for a bus stop in the nearby list.
- * Top: stop name + distance. Bottom: bus chips sorted by soonest arrival.
+ * Two-tier card for a bus stop in the nearby/search list.
+ * Collapsed: up to 6 chips + a chevron-down button on the right to expand.
+ * Expanded: all services sorted by service number, with 3 aligned arrival columns.
  */
-import { View, Text, ScrollView, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import { useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useArrivals } from '../hooks/useArrivals';
 import { minsUntil, formatArrival } from '../utils/arrival';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
-import type { BusStop, BusServiceArrival } from '../types/bus';
+import type { BusStop, BusServiceArrival, BusArrivalInfo } from '../types/bus';
 
 type BusStopWithDistance = BusStop & { distanceKm?: number };
 
 type ArrivalEntry = { key: string; serviceNo: string; mins: number };
 
+const COLLAPSED_LIMIT = 6;
+
 function getArrivalColor(mins: number): string {
   if (mins < 5) return colors.arrivalSoon;
   if (mins < 15) return colors.arrivalMedium;
   return colors.arrivalLater;
+}
+
+function getLoadColor(load: string): string {
+  if (load === 'SEA') return colors.loadSeat;
+  if (load === 'SDA') return colors.loadStand;
+  return colors.loadLimited;
 }
 
 function formatDistance(km: number): string {
@@ -41,18 +52,58 @@ function flattenAndSort(services: BusServiceArrival[]): ArrivalEntry[] {
   return entries.sort((a, b) => a.mins - b.mins);
 }
 
+function sortServicesByNumber(services: BusServiceArrival[]): BusServiceArrival[] {
+  return [...services].sort((a, b) => {
+    const numA = parseInt(a.ServiceNo, 10);
+    const numB = parseInt(b.ServiceNo, 10);
+    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+    return a.ServiceNo.localeCompare(b.ServiceNo);
+  });
+}
+
+function ArrivalBadge({ info }: { info: BusArrivalInfo }) {
+  const mins = minsUntil(info.EstimatedArrival);
+  const color = mins !== null ? getArrivalColor(mins) : colors.textMuted;
+  const loadColor = info.Load ? getLoadColor(info.Load) : colors.textMuted;
+  return (
+    <View style={styles.badge}>
+      <Text style={[styles.badgeText, { color }]}>{formatArrival(mins)}</Text>
+      {info.Load ? <View style={[styles.loadDot, { backgroundColor: loadColor }]} /> : null}
+    </View>
+  );
+}
+
 export function BusStopListCard({ stop }: { stop: BusStopWithDistance }) {
   const { arrivals, loading } = useArrivals(stop.BusStopCode);
-  const entries = flattenAndSort(arrivals);
+  const [expanded, setExpanded] = useState(false);
+
+  const collapsedEntries = flattenAndSort(arrivals).slice(0, COLLAPSED_LIMIT);
+  const sortedServices = sortServicesByNumber(arrivals);
+  const canExpand = arrivals.length > 0;
 
   return (
     <View style={styles.card}>
       <View style={styles.header}>
-        <Text style={styles.stopName} numberOfLines={2} ellipsizeMode="tail">
-          {stop.Description}
-        </Text>
-        {stop.distanceKm != null && (
-          <Text style={styles.distance}>{formatDistance(stop.distanceKm)}</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.stopName} numberOfLines={2} ellipsizeMode="tail">
+            {stop.Description}
+          </Text>
+          {stop.distanceKm != null && (
+            <Text style={styles.distance}>{formatDistance(stop.distanceKm)}</Text>
+          )}
+        </View>
+        {canExpand && (
+          <TouchableOpacity
+            style={styles.chevronButton}
+            onPress={() => setExpanded((v) => !v)}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.textMuted}
+            />
+          </TouchableOpacity>
         )}
       </View>
 
@@ -60,21 +111,32 @@ export function BusStopListCard({ stop }: { stop: BusStopWithDistance }) {
         <View style={styles.loaderRow}>
           <ActivityIndicator color={colors.accent} size="small" />
         </View>
+      ) : expanded ? (
+        <View style={styles.expandedBody}>
+          {sortedServices.map((svc) => (
+            <View key={svc.ServiceNo} style={styles.serviceRow}>
+              <View style={styles.serviceNoWrap}>
+                <Text style={styles.serviceNo}>{svc.ServiceNo}</Text>
+              </View>
+              <View style={styles.badgesRow}>
+                <View style={styles.badgeWrap}><ArrivalBadge info={svc.NextBus} /></View>
+                <View style={styles.badgeWrap}><ArrivalBadge info={svc.NextBus2} /></View>
+                <View style={styles.badgeWrap}><ArrivalBadge info={svc.NextBus3} /></View>
+              </View>
+            </View>
+          ))}
+        </View>
       ) : (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.services}
-        >
-          {entries.map((entry) => (
+        <View style={styles.chipsArea}>
+          {collapsedEntries.map((entry) => (
             <View key={entry.key} style={styles.chip}>
-              <Text style={styles.busNo}>{entry.serviceNo}</Text>
-              <Text style={[styles.arrivalTime, { color: getArrivalColor(entry.mins) }]}>
+              <Text style={styles.chipBusNo}>{entry.serviceNo}</Text>
+              <Text style={[styles.chipArrival, { color: getArrivalColor(entry.mins) }]}>
                 {formatArrival(entry.mins)}
               </Text>
             </View>
           ))}
-        </ScrollView>
+        </View>
       )}
     </View>
   );
@@ -103,33 +165,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
+    paddingLeft: 12,
+    paddingRight: 4,
     paddingTop: 7,
     paddingBottom: 4,
-    gap: 8,
+  },
+  headerLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingRight: 4,
   },
   stopName: {
     ...typography.bodyMedium,
     color: colors.text,
     fontSize: 13,
     fontWeight: '600',
-    flex: 1,
   },
   distance: {
     ...typography.label,
     color: colors.accent,
     flexShrink: 0,
-    marginTop: 1,
+  },
+  chevronButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
   },
   loaderRow: {
     paddingVertical: 12,
     alignItems: 'center',
   },
-  services: {
+  chipsArea: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-    alignItems: 'center',
+    paddingBottom: 10,
+    gap: 6,
   },
   chip: {
     alignItems: 'center',
@@ -139,14 +213,60 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     minWidth: 44,
   },
-  busNo: {
+  chipBusNo: {
     color: colors.text,
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 2,
   },
-  arrivalTime: {
+  chipArrival: {
     fontSize: 10,
     fontWeight: '600',
+  },
+  expandedBody: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 10,
+  },
+  serviceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  serviceNoWrap: {
+    width: 44,
+    alignItems: 'flex-start',
+  },
+  serviceNo: {
+    ...typography.bodyMedium,
+    color: colors.accent,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  badgesRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  badgeWrap: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.surfaceElevated,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  badgeText: {
+    ...typography.captionMedium,
+    fontWeight: '600',
+  },
+  loadDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
   },
 });
