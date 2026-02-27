@@ -15,8 +15,8 @@ export const SINGAPORE_REGION = {
 };
 
 export const DEFAULT_REGION_DELTA = {
-  latitudeDelta: 0.018,
-  longitudeDelta: 0.018,
+  latitudeDelta: 0.010,
+  longitudeDelta: 0.010,
 } as const;
 
 export const darkMapStyle = [

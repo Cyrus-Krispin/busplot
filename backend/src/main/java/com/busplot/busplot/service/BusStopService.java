@@ -1,96 +1,70 @@
 package com.busplot.busplot.service;
 
-import com.busplot.busplot.config.DotenvLoader;
 import com.busplot.busplot.config.MockFallbackData;
 import com.busplot.busplot.dto.BusStop;
-import com.busplot.busplot.dto.LtaBusStopsResponse;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.cdimascio.dotenv.Dotenv;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestTemplate;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @Service
 public class BusStopService {
 
-    private static final String BUS_STOPS_URL = "https://datamall2.mytransport.sg/ltaodataservice/BusStops";
     private static final double EARTH_RADIUS_KM = 6371;
+    private static final int MAX_NEARBY_STOPS = 20;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final Resource busStopsResource;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final String accountKey;
-
     private final AtomicReference<List<BusStop>> cache = new AtomicReference<>(null);
 
-    public BusStopService() {
-        Dotenv dotenv = DotenvLoader.load();
-        String envKey = System.getenv("LTA_API_KEY");
-        this.accountKey = (dotenv.get("LTA_API_KEY", envKey != null ? envKey : "")).trim();
+    public BusStopService(@Value("${busplot.data.bus-stops-path}") Resource busStopsResource) {
+        this.busStopsResource = busStopsResource;
     }
 
     public List<BusStop> getAllBusStops() {
-        return fetchAndCacheStops();
+        return loadAndCache();
     }
 
-    private static final int MAX_NEARBY_STOPS = 100;
+    public List<BusStop> searchBusStops(String query) {
+        String q = query.toLowerCase(Locale.ROOT);
+        return loadAndCache().stream()
+                .filter(s -> s.getBusStopCode().toLowerCase(Locale.ROOT).contains(q)
+                        || s.getDescription().toLowerCase(Locale.ROOT).contains(q)
+                        || s.getRoadName().toLowerCase(Locale.ROOT).contains(q))
+                .limit(50)
+                .collect(Collectors.toList());
+    }
 
     public List<BusStop> getNearbyStops(double lat, double lng, double radiusKm) {
-        List<BusStop> all = fetchAndCacheStops();
-        return all.stream()
+        return loadAndCache().stream()
                 .filter(s -> distanceKm(lat, lng, s.getLatitude(), s.getLongitude()) <= radiusKm)
                 .sorted(Comparator.comparingDouble(s -> distanceKm(lat, lng, s.getLatitude(), s.getLongitude())))
                 .limit(MAX_NEARBY_STOPS)
                 .collect(Collectors.toList());
     }
 
-    private static final int LTA_PAGE_SIZE = 500;
-
-    private List<BusStop> fetchAndCacheStops() {
+    private List<BusStop> loadAndCache() {
         List<BusStop> cached = cache.get();
-        if (cached != null) {
-            return cached;
-        }
+        if (cached != null) return cached;
 
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("AccountKey", accountKey);
-            headers.setAccept(List.of(MediaType.APPLICATION_JSON));
-            HttpEntity<Void> request = new HttpEntity<>(headers);
-
-            List<BusStop> allStops = new ArrayList<>();
-            int skip = 0;
-            while (true) {
-                String url = BUS_STOPS_URL + "?$skip=" + skip + "&$top=" + LTA_PAGE_SIZE;
-                ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, request, String.class);
-                LtaBusStopsResponse parsed = objectMapper.readValue(response.getBody(), LtaBusStopsResponse.class);
-                List<BusStop> page = parsed.getValue() != null ? parsed.getValue() : Collections.emptyList();
-                if (page.isEmpty()) break;
-                allStops.addAll(page);
-                if (page.size() < LTA_PAGE_SIZE) break;
-                skip += LTA_PAGE_SIZE;
-            }
-            cache.set(allStops);
-            return allStops;
-        } catch (HttpClientErrorException e) {
-            if (e.getStatusCode().value() != 401) throw new RuntimeException("Failed to fetch Bus Stops", e);
-            // LTA API key invalid/missing - use mock data so app works
+            List<BusStop> stops = objectMapper.readValue(
+                    busStopsResource.getInputStream(),
+                    new TypeReference<List<BusStop>>() {}
+            );
+            cache.set(stops);
+            return stops;
+        } catch (Exception e) {
             List<BusStop> mock = MockFallbackData.getMockStops();
             cache.set(mock);
             return mock;
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to fetch Bus Stops", e);
         }
     }
 
@@ -100,7 +74,6 @@ public class BusStopService {
         double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
                 + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
                 * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return EARTH_RADIUS_KM * c;
+        return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 }

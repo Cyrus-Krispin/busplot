@@ -58,6 +58,25 @@ public class BusStopController {
         }
     }
 
+    @GetMapping(path = "/bus/stops/search")
+    public ResponseEntity<List<BusStop>> searchBusStops(
+            @RequestParam("q") String query
+    ) {
+        if (query == null || query.isBlank()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        log.info("API GET /bus/stops/search q={}", query);
+        long start = System.currentTimeMillis();
+        try {
+            List<BusStop> stops = busStopService.searchBusStops(query);
+            log.info("API GET /bus/stops/search OK count={} ms={}", stops.size(), System.currentTimeMillis() - start);
+            return new ResponseEntity<>(stops, HttpStatus.OK);
+        } catch (Exception e) {
+            log.error("API GET /bus/stops/search FAILED q={} ms={}", query, System.currentTimeMillis() - start, e);
+            throw e;
+        }
+    }
+
     @GetMapping(path = "/bus/arrivals")
     public ResponseEntity<JsonNode> getBusArrivals(
             @RequestParam("busStopCode") String busStopCode,

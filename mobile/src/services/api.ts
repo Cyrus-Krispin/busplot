@@ -74,6 +74,14 @@ export async function getNearbyBusStops(
   return Array.isArray(data) ? data : [];
 }
 
+export async function searchBusStops(query: string): Promise<BusStop[]> {
+  const params = new URLSearchParams({ q: query });
+  const res = await fetchWithTimeout(`${BASE_URL}/bus/stops/search?${params}`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
 export async function getBusArrivals(
   busStopCode: string,
   serviceNo?: string
