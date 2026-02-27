@@ -65,16 +65,12 @@ export function MapScreen() {
 
   const handleRecenter = useCallback(() => {
     if (!location || !mapRef.current) return;
-    const delta =
-      visibleRegion?.latitudeDelta != null && visibleRegion?.longitudeDelta != null
-        ? { latitudeDelta: visibleRegion.latitudeDelta, longitudeDelta: visibleRegion.longitudeDelta }
-        : DEFAULT_REGION_DELTA;
-    const reg = { ...location, ...delta };
+    const reg = { ...location, ...DEFAULT_REGION_DELTA };
     mapRef.current.animateToRegion(reg);
     setMapCenter({ lat: location.latitude, lng: location.longitude });
     setLastCenter(location.latitude, location.longitude);
     resetCenterDot();
-  }, [location?.latitude, location?.longitude, visibleRegion?.latitudeDelta, visibleRegion?.longitudeDelta, setLastCenter, resetCenterDot]);
+  }, [location?.latitude, location?.longitude, setLastCenter, resetCenterDot]);
 
   useEffect(() => {
     if (location) centerOnUser();

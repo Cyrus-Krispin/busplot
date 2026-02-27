@@ -4,7 +4,7 @@
  * Expanded: all services sorted by service number, with 3 aligned arrival columns.
  */
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useArrivals } from '../hooks/useArrivals';
 import { minsUntil, formatArrival } from '../utils/arrival';
@@ -77,13 +77,17 @@ export function BusStopListCard({ stop }: { stop: BusStopWithDistance }) {
   const { arrivals, loading } = useArrivals(stop.BusStopCode);
   const [expanded, setExpanded] = useState(false);
 
-  const collapsedEntries = flattenAndSort(arrivals).slice(0, COLLAPSED_LIMIT);
+  const collapsedEntries = flattenAndSort(arrivals);
   const sortedServices = sortServicesByNumber(arrivals);
   const canExpand = arrivals.length > 0;
 
   return (
     <View style={styles.card}>
-      <View style={styles.header}>
+      <TouchableOpacity
+        style={styles.header}
+        onPress={() => canExpand && setExpanded((v) => !v)}
+        activeOpacity={canExpand ? 0.7 : 1}
+      >
         <View style={styles.headerLeft}>
           <Text style={styles.stopName} numberOfLines={2} ellipsizeMode="tail">
             {stop.Description}
@@ -93,19 +97,17 @@ export function BusStopListCard({ stop }: { stop: BusStopWithDistance }) {
           )}
         </View>
         {canExpand && (
-          <TouchableOpacity
-            style={styles.chevronButton}
-            onPress={() => setExpanded((v) => !v)}
-            activeOpacity={0.7}
-          >
+          <View style={styles.chevronButton}>
             <Ionicons
               name={expanded ? 'chevron-up' : 'chevron-down'}
               size={18}
               color={colors.textMuted}
             />
-          </TouchableOpacity>
+          </View>
         )}
-      </View>
+      </TouchableOpacity>
+
+      <View style={styles.divider} />
 
       {loading ? (
         <View style={styles.loaderRow}>
@@ -127,7 +129,11 @@ export function BusStopListCard({ stop }: { stop: BusStopWithDistance }) {
           ))}
         </View>
       ) : (
-        <View style={styles.chipsArea}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipsArea}
+        >
           {collapsedEntries.map((entry) => (
             <View key={entry.key} style={styles.chip}>
               <Text style={styles.chipBusNo}>{entry.serviceNo}</Text>
@@ -136,7 +142,7 @@ export function BusStopListCard({ stop }: { stop: BusStopWithDistance }) {
               </Text>
             </View>
           ))}
-        </View>
+        </ScrollView>
       )}
     </View>
   );
@@ -163,12 +169,12 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingLeft: 12,
     paddingRight: 4,
-    paddingTop: 7,
-    paddingBottom: 4,
+    paddingTop: 2,
+    paddingBottom: 0,
   },
   headerLeft: {
     flex: 1,
@@ -191,8 +197,12 @@ const styles = StyleSheet.create({
   },
   chevronButton: {
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    alignSelf: 'center',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
   },
   loaderRow: {
     paddingVertical: 12,
@@ -200,8 +210,9 @@ const styles = StyleSheet.create({
   },
   chipsArea: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     paddingHorizontal: 12,
+    paddingTop: 10,
     paddingBottom: 10,
     gap: 6,
   },
@@ -225,8 +236,8 @@ const styles = StyleSheet.create({
   },
   expandedBody: {
     paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingTop: 10,
+    paddingBottom: 10,
     gap: 10,
   },
   serviceRow: {
@@ -254,15 +265,17 @@ const styles = StyleSheet.create({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 4,
     backgroundColor: colors.surfaceElevated,
-    paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 8,
+    width: 60,
   },
   badgeText: {
     ...typography.captionMedium,
     fontWeight: '600',
+    textAlign: 'center',
   },
   loadDot: {
     width: 5,
